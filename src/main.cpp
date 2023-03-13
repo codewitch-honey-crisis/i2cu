@@ -3,14 +3,14 @@
 #define I2C_SCL 22
 #include <Arduino.h>
 #include <Wire.h>
-#include "driver/i2c.h"
-#define LCD_IMPLEMENTATION
+
 #include <atomic>
 #include <button.hpp>
 #include <lcd_miser.hpp>
 #include <thread.hpp>
 #include <uix.hpp>
-
+#define LCD_IMPLEMENTATION
+#include "driver/i2c.h"
 #include "lcd_init.h"
 #include "ui.hpp"
 using namespace arduino;
@@ -18,7 +18,9 @@ using namespace gfx;
 using namespace uix;
 using namespace freertos;
 
-static void uix_on_flush(point16 location, bitmap<rgb_pixel<16>>& bmp, void* state); 
+static void uix_on_flush(point16 location,
+                         bitmap<rgb_pixel<16>>& bmp,
+                         void* state);
 static bool lcd_flush_ready(esp_lcd_panel_io_handle_t panel_io,
                             esp_lcd_panel_io_event_data_t* edata,
                             void* user_ctx);
@@ -68,11 +70,15 @@ void setup() {
             ;
     }
     lcd_dimmer.initialize();
-    memset(&i2c_addresses_old,0,sizeof(i2c_addresses_old));
-    memset(&i2c_addresses,0,sizeof(i2c_addresses));
+    memset(&i2c_addresses_old, 0, sizeof(i2c_addresses_old));
+    memset(&i2c_addresses, 0, sizeof(i2c_addresses));
     updater_ran = false;
     update_sync = xSemaphoreCreateMutex();
-    updater = thread::create_affinity(1-thread::current().affinity(),update_task,nullptr,10,2000);
+    updater = thread::create_affinity(1 - thread::current().affinity(),
+                                      update_task,
+                                      nullptr,
+                                      10,
+                                      2000);
     updater.start();
     button_a.initialize();
     button_b.initialize();
@@ -89,19 +95,20 @@ void setup() {
     ui_init();
     lcd_buffer2 = (uint8_t*)malloc(lcd_buffer_size);
     if (lcd_buffer2 == nullptr) {
-        Serial.println("Warning: Out of memory allocating lcd_buffer2. Performance may be degraded. Try a smaller lcd_buffer_size");
+        Serial.println("Warning: Out of memory allocating lcd_buffer2.");
+        Serial.println("Performance may be degraded. Try a smaller lcd_buffer_size");
     }
-    
+
     *display_text = '\0';
-    Serial.printf("SRAM free: %0.1fKB\n",(float)ESP.getFreeHeap()/1024.0);
-    Serial.printf("SRAM largest free block: %0.1fKB\n",(float)ESP.getMaxAllocHeap()/1024.0);
+    Serial.printf("SRAM free: %0.1fKB\n", (float)ESP.getFreeHeap() / 1024.0);
+    Serial.printf("SRAM largest free block: %0.1fKB\n", (float)ESP.getMaxAllocHeap() / 1024.0);
 }
 
 void loop() {
     lcd_dimmer.update();
     button_a.update();
     button_b.update();
-    if(refresh_i2c()) {
+    if (refresh_i2c()) {
         lcd_wake();
         lcd_dimmer.wake();
         Serial.println("I2C changed");
@@ -167,21 +174,20 @@ static void button_b_on_click(int clicks, void* state) {
 }
 void update_task(void* state) {
     while (true) {
-        I2C.begin(I2C_SDA, I2C_SCL);  // sda= GPIO_21 /scl= GPIO_22
+        I2C.begin(I2C_SDA, I2C_SCL);
         i2c_set_pin(0, I2C_SDA, I2C_SCL, true, true, I2C_MODE_MASTER);
         I2C.setTimeOut(uint16_t(-1));
         uint32_t banks[4];
-        memset(banks,0,sizeof(banks));
+        memset(banks, 0, sizeof(banks));
         for (byte i = 0; i < 127; i++) {
-            I2C.beginTransmission(i);        // Begin I2C transmission Address (i)
-            if (I2C.endTransmission() == 0)  // Receive 0 = success (ACK response)
-            {
-                banks[i/32]|=(1<<(i%32));
+            I2C.beginTransmission(i);
+            if (I2C.endTransmission() == 0) {
+                banks[i / 32] |= (1 << (i % 32));
             }
         }
         I2C.end();
-        xSemaphoreTake(update_sync,portMAX_DELAY);
-        memcpy(i2c_addresses.banks,banks,sizeof(banks));
+        xSemaphoreTake(update_sync, portMAX_DELAY);
+        memcpy(i2c_addresses.banks, banks, sizeof(banks));
         xSemaphoreGive(update_sync);
         updater_ran = true;
         delay(1000);
