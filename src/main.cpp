@@ -203,7 +203,7 @@ static bool refresh_i2c() {
         memcpy(banks, i2c_addresses.banks, sizeof(banks));
         xSemaphoreGive(update_sync);
 
-        if (updater_ran && memcmp(banks, i2c_addresses_old.banks, sizeof(banks))) {
+        if (memcmp(banks, i2c_addresses_old.banks, sizeof(banks))) {
             char buf[32];
             *display_text = '\0';
             bool found = false;
