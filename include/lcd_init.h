@@ -7,10 +7,6 @@
 #include "driver/gpio.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
-// extra drivers:
-#include "esp_lcd_panel_ili9341.h"
-#include "esp_lcd_panel_ili9342.h"
-#include "esp_lcd_panel_ili9488.h"
 #endif // LCD_IMPLEMENTATION
 #include "esp_lcd_panel_io.h"
 
