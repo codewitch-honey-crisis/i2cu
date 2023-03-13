@@ -18,18 +18,29 @@ using namespace gfx;
 using namespace uix;
 using namespace freertos;
 
+// htcw_uix calls this to send a bitmap to the LCD Panel API
 static void uix_on_flush(point16 location,
                          bitmap<rgb_pixel<16>>& bmp,
                          void* state);
+// the ESP Panel API calls this when the bitmap has been sent
 static bool lcd_flush_ready(esp_lcd_panel_io_handle_t panel_io,
                             esp_lcd_panel_io_event_data_t* edata,
                             void* user_ctx);
+// put the display controller and panel to sleep
 static void lcd_sleep();
+// wake up the display controller and panel
 static void lcd_wake();
+// check if the i2c address list has changed and
+// rebuild the list if it has
 static bool refresh_i2c();
-static void draw_probe();
+// click handler for button a
 static void button_a_on_click(int clicks, void* state);
+// click handler for button b (not necessary, but
+// for future proofing in case the buttons get used
+// later)
 static void button_b_on_click(int clicks, void* state);
+// thread routine that scans the bus and 
+// updates the i2c address list
 static void update_task(void* state);
 using dimmer_t = lcd_miser<4>;
 using color16_t = color<rgb_pixel<16>>;
@@ -42,6 +53,7 @@ using screen_t = screen<LCD_HRES, LCD_VRES, rgb_pixel<16>>;
 static thread updater;
 static SemaphoreHandle_t update_sync;
 static volatile std::atomic_bool updater_ran;
+
 struct i2c_data {
     uint32_t banks[4];
 };
@@ -90,18 +102,21 @@ void setup() {
         while (1)
             ;
     }
-    main_screen = screen_t(lcd_buffer_size, lcd_buffer1, lcd_buffer2);
-    main_screen.on_flush_callback(uix_on_flush);
-    ui_init();
     lcd_buffer2 = (uint8_t*)malloc(lcd_buffer_size);
     if (lcd_buffer2 == nullptr) {
         Serial.println("Warning: Out of memory allocating lcd_buffer2.");
         Serial.println("Performance may be degraded. Try a smaller lcd_buffer_size");
     }
-
+    main_screen = screen_t(lcd_buffer_size, lcd_buffer1, lcd_buffer2);
+    main_screen.on_flush_callback(uix_on_flush);
+    ui_init();
+    
     *display_text = '\0';
-    Serial.printf("SRAM free: %0.1fKB\n", (float)ESP.getFreeHeap() / 1024.0);
-    Serial.printf("SRAM largest free block: %0.1fKB\n", (float)ESP.getMaxAllocHeap() / 1024.0);
+
+    Serial.printf("SRAM free: %0.1fKB\n", 
+        (float)ESP.getFreeHeap() / 1024.0);
+    Serial.printf("SRAM largest free block: %0.1fKB\n", 
+        (float)ESP.getMaxAllocHeap() / 1024.0);
 }
 
 void loop() {
