@@ -52,7 +52,7 @@ static void ui_init_main_screen() {
     probe_label.text_color(ctl_color_t::white);
     probe_label.text_open_font(&probe_font);
     probe_label.text_line_height(20);
-    probe_label.text_justify(uix_justify::top_left);
+    probe_label.text_justify(uix_justify::center_left);
     probe_label.bounds(main_screen.bounds());
     probe_label.visible(false);
     main_screen.register_control(probe_label);
