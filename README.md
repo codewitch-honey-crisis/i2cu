@@ -12,4 +12,4 @@ wire ground to ground in your circuit
 Wire SDA to 21
 Wire SCL to 22
 
-The screen is designed to sleep after a brief period in case the TTGO is on battery. Press button to wake it up.
+The screen is designed to sleep after a brief period in case the TTGO is on battery. Press a button to wake it up.

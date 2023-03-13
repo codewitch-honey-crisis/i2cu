@@ -49,13 +49,11 @@ static i2c_data i2c_addresses_old;
 
 static char display_text[8 * 1024];
 
-static constexpr const size_t lcd_buffer_size = 32 * 1024;
+static constexpr const size_t lcd_buffer_size = 64 * 1024;
 static uint8_t* lcd_buffer1 = nullptr;
 static uint8_t* lcd_buffer2 = nullptr;
 static bool lcd_sleeping = false;
 static dimmer_t lcd_dimmer;
-
-screen_t* active_screen = nullptr;
 
 static button_a_raw_t button_a_raw;
 static button_b_raw_t button_b_raw;
@@ -87,38 +85,37 @@ void setup() {
         while (1)
             ;
     }
+    main_screen = screen_t(lcd_buffer_size, lcd_buffer1, lcd_buffer2);
+    main_screen.on_flush_callback(uix_on_flush);
+    ui_init();
     lcd_buffer2 = (uint8_t*)malloc(lcd_buffer_size);
     if (lcd_buffer2 == nullptr) {
         Serial.println("Warning: Out of memory allocating lcd_buffer2. Performance may be degraded. Try a smaller lcd_buffer_size");
     }
-    main_screen = screen_t(lcd_buffer_size, lcd_buffer1, lcd_buffer2);
-    main_screen.on_flush_callback(uix_on_flush);
-    probe_screen = screen_t(lcd_buffer_size, lcd_buffer1, lcd_buffer2);
-    probe_screen.on_flush_callback(uix_on_flush);
-    ui_init();
+    
     *display_text = '\0';
-    active_screen = &main_screen;
+    Serial.printf("SRAM free: %0.1fKB\n",(float)ESP.getFreeHeap()/1024.0);
+    Serial.printf("SRAM largest free block: %0.1fKB\n",(float)ESP.getMaxAllocHeap()/1024.0);
 }
 
 void loop() {
     lcd_dimmer.update();
     button_a.update();
     button_b.update();
+    if(refresh_i2c()) {
+        lcd_wake();
+        lcd_dimmer.wake();
+        Serial.println("I2C changed");
+        probe_label.text(display_text);
+        probe_label.visible(true);
+    }
     if (lcd_dimmer.faded()) {
         if (!lcd_sleeping) {
             lcd_sleep();
         }
     } else {
         lcd_wake();
-        if(refresh_i2c()) {
-            Serial.println("I2C changed");
-            active_screen = &probe_screen;
-            active_screen->invalidate(active_screen->bounds());
-            draw_probe();
-        }
-        if (active_screen != nullptr) {
-            active_screen->update();
-        }
+        main_screen.update();
     }
 }
 static void uix_on_flush(point16 location, bitmap<rgb_pixel<16>>& bmp, void* state) {
@@ -126,9 +123,6 @@ static void uix_on_flush(point16 location, bitmap<rgb_pixel<16>>& bmp, void* sta
     int y1 = location.y;
     int x2 = x1 + bmp.dimensions().width;
     int y2 = y1 + bmp.dimensions().height;
-    if(active_screen==&probe_screen) {
-        Serial.println("flush probe");
-    }
     esp_lcd_panel_draw_bitmap(lcd_handle,
                               x1,
                               y1,
@@ -140,9 +134,7 @@ static void uix_on_flush(point16 location, bitmap<rgb_pixel<16>>& bmp, void* sta
 static bool lcd_flush_ready(esp_lcd_panel_io_handle_t panel_io,
                             esp_lcd_panel_io_event_data_t* edata,
                             void* user_ctx) {
-    if (active_screen != nullptr) {
-        active_screen->set_flush_complete();
-    }
+    main_screen.set_flush_complete();
     return true;
 }
 static void lcd_sleep() {
@@ -228,7 +220,4 @@ static bool refresh_i2c() {
         }
     }
     return false;
-}
-static void draw_probe() {
-    probe_label.text(display_text);
 }
