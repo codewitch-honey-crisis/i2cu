@@ -9,21 +9,32 @@ const gfx::open_font& probe_font = Telegrama;
 
 using namespace gfx;
 using namespace uix;
+// declare native pixel type color enum
+// for the screen
 using scr_color_t = color<typename ui_screen_t::pixel_type>;
+// declare 32-bit pixel color enum
+// for controls
 using ctl_color_t = color<rgba_pixel<32>>;
 
+// our title SVG
 svg_doc title_doc;
+
+// the screen
 ui_screen_t main_screen(0,nullptr,nullptr);
 
-// main screen
+// main screen controls
 ui_label_t title_label(main_screen);
 ui_svg_box_t title_svg(main_screen);
-// probe screen
 ui_label_t probe_label(main_screen);
 ui_label_t probe_msg_label1(main_screen);
 ui_label_t probe_msg_label2(main_screen);
+// holds how many cols and rows
+// are available
 uint16_t probe_cols = 0;
 uint16_t probe_rows = 0;
+
+// set up all the main screen
+// controls
 static void ui_init_main_screen() {
     rgba_pixel<32> trans;
     trans.channel<channel_name::A>(0);
@@ -69,7 +80,12 @@ static void ui_init_main_screen() {
                             probe_font.scale(
                                 probe_label.text_line_height()));
     srect16 b = main_screen.bounds();
-    b=srect16(b.x1,b.y1,b.x2,b.y1+probe_msg_label1.text_line_height()+probe_msg_label1.padding().height*2).center_vertical(main_screen.bounds());
+    b=srect16(b.x1,
+            b.y1,
+            b.x2,
+            b.y1+probe_msg_label1.text_line_height()+
+                probe_msg_label1.padding().height*2).
+                    center_vertical(main_screen.bounds());
     b.offset_inplace(0,-(b.height()/2));
     probe_cols = (main_screen.dimensions().width-
         probe_label.padding().width*2)/

@@ -1,6 +1,8 @@
 #pragma once
 #include "lcd_config.h"
 #include <uix.hpp>
+// user interface controls
+// and screen declarations
 using ui_screen_t = uix::screen<LCD_HRES,LCD_VRES,gfx::rgb_pixel<16>>;
 using ui_label_t = uix::label<typename ui_screen_t::pixel_type,
                             typename ui_screen_t::palette_type>;
