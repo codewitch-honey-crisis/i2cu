@@ -19,5 +19,7 @@ Or for serial wire 17 to a serial UART TX line.
 The screen is designed to sleep after a brief period in case the TTGO is on battery. Press the left button to wake it up.
 
 Holding the left button pauses any display.
-Clicking the right button changes serial mode from text to binary
+
+Clicking the right button changes serial mode from text to binary.
+
 Long pressing the right button selects the baud rate.
