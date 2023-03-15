@@ -325,6 +325,7 @@ static bool refresh_i2c() {
             }
             if (!count) {
                 strncpy(display_text, "<none>", sizeof(display_text));
+                display_text[6]='\0';
                 Serial.println("<none>");
             }
             Serial.println();
