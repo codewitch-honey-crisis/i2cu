@@ -172,7 +172,7 @@ void loop() {
     button_a.update();
     button_b.update();
     if (refresh_i2c()) {
-        probe_label.text_color(color32_t::light_blue);
+        probe_label.text_color(color32_t::green);
         probe_label.text(display_text);
         probe_label.visible(true);
         lcd_wake();
