@@ -79,6 +79,12 @@ static void ui_init_main_screen() {
                             "M",
                             probe_font.scale(
                                 probe_label.text_line_height()));
+    probe_cols = (main_screen.dimensions().width-
+        probe_label.padding().width*2)/
+        tsz.width;
+    probe_rows = (main_screen.dimensions().height-
+        probe_label.padding().height*2)/
+        tsz.height;
     srect16 b = main_screen.bounds();
     b=srect16(b.x1,
             b.y1,
@@ -87,18 +93,12 @@ static void ui_init_main_screen() {
                 probe_msg_label1.padding().height*2).
                     center_vertical(main_screen.bounds());
     b.offset_inplace(0,-(b.height()/2));
-    probe_cols = (main_screen.dimensions().width-
-        probe_label.padding().width*2)/
-        tsz.width;
-    probe_rows = (main_screen.dimensions().height-
-        probe_label.padding().height*2)/
-        tsz.height;
     rgba_pixel<32> mbg = ctl_color_t::silver;
     mbg.channelr<channel_name::A>(.87);
     probe_msg_label1.background_color(mbg);
     probe_msg_label1.border_color(mbg);
     probe_msg_label1.text_color(ctl_color_t::black);
-    probe_msg_label1.text_open_font(&probe_font);
+    probe_msg_label1.text_open_font(&title_font);
     probe_msg_label1.text_line_height(25);
     probe_msg_label1.text_justify(uix_justify::center);
     
