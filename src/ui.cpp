@@ -20,8 +20,8 @@ ui_label_t title_label(main_screen);
 ui_svg_box_t title_svg(main_screen);
 // probe screen
 ui_label_t probe_label(main_screen);
-//ui_label_t probe_msg_label1(probe_screen);
-//ui_label_t probe_msg_label2(probe_screen);
+ui_label_t probe_msg_label1(main_screen);
+ui_label_t probe_msg_label2(main_screen);
 uint16_t probe_cols = 0;
 uint16_t probe_rows = 0;
 static void ui_init_main_screen() {
@@ -42,7 +42,9 @@ static void ui_init_main_screen() {
         Serial.println("Could not load title svg");
     } else {
         title_svg.doc(&title_doc);
-        title_svg.bounds(main_screen.bounds().offset(main_screen.dimensions().height/16,main_screen.dimensions().height/4));
+        title_svg.bounds(main_screen.bounds()
+                            .offset(main_screen.dimensions().height/16,
+                                    main_screen.dimensions().height/4));
         main_screen.register_control(title_svg);
     }
     rgba_pixel<32> bg = ctl_color_t::black;
@@ -66,15 +68,40 @@ static void ui_init_main_screen() {
                             "M",
                             probe_font.scale(
                                 probe_label.text_line_height()));
+    srect16 b = main_screen.bounds();
+    b=srect16(b.x1,b.y1,b.x2,b.y1+probe_msg_label1.text_line_height()+probe_msg_label1.padding().height*2).center_vertical(main_screen.bounds());
+    b.offset_inplace(0,-(b.height()/2));
     probe_cols = (main_screen.dimensions().width-
         probe_label.padding().width*2)/
         tsz.width;
+    probe_rows = (main_screen.dimensions().height-
+        probe_label.padding().height*2)/
+        tsz.height;
+    rgba_pixel<32> mbg = ctl_color_t::silver;
+    mbg.channelr<channel_name::A>(.87);
+    probe_msg_label1.background_color(mbg);
+    probe_msg_label1.border_color(mbg);
+    probe_msg_label1.text_color(ctl_color_t::black);
+    probe_msg_label1.text_open_font(&probe_font);
+    probe_msg_label1.text_line_height(25);
+    probe_msg_label1.text_justify(uix_justify::center);
+    
+    probe_msg_label1.bounds(b);
+    probe_msg_label1.visible(false);
+    main_screen.register_control(probe_msg_label1);
+
+    probe_msg_label2.background_color(mbg);
+    probe_msg_label2.border_color(mbg);
+    probe_msg_label2.text_color(ctl_color_t::black);
+    probe_msg_label2.text_open_font(&probe_font);
+    probe_msg_label2.text_line_height(25);
+    probe_msg_label2.text_justify(uix_justify::center);
+    b.offset_inplace(0,probe_msg_label1.bounds().height());
+    probe_msg_label2.bounds(b);
+    probe_msg_label2.visible(false);
+    main_screen.register_control(probe_msg_label2);
 
     main_screen.background_color(scr_color_t::white);
-}
-static void ui_init_probe_screen() {
-    
-    
 }
 void ui_init() {
     ui_init_main_screen();
