@@ -12,4 +12,8 @@ wire ground to ground in your circuit
 Wire SDA to 21
 Wire SCL to 22
 
-The screen is designed to sleep after a brief period in case the TTGO is on battery. Press a button to wake it up.
+The screen is designed to sleep after a brief period in case the TTGO is on battery. Press the left button to wake it up.
+
+Holding the left button pauses any display.
+Clicking the right button changes serial mode from text to binary
+Long pressing the right button selects the baud rate.
