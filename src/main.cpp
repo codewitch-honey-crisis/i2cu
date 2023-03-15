@@ -5,7 +5,7 @@
 #define SER_RX 17
 #include <Arduino.h>
 #include <Wire.h>
-
+#include <SPIFFS.h>
 #include <atomic>
 #include <button.hpp>
 #include <htcw_data.hpp>
@@ -39,6 +39,8 @@ static bool refresh_i2c();
 // check if there is serial data incoming
 // rebuild the display if it has
 static bool refresh_serial();
+// saves the settings
+static void save_settings();
 // click handler for button a
 static void button_a_on_click(int clicks, void* state);
 // long click handler for button a
@@ -97,6 +99,15 @@ static button_t button_b(button_b_raw);
 void setup() {
     Serial.begin(115200);
     SER.begin(115200, SERIAL_8N1, SER_RX, -1);
+    SPIFFS.begin(true,"/spiffs",1);
+    if(SPIFFS.exists("/settings")) {
+        File file = SPIFFS.open("/settings");
+        file.read((uint8_t*)&serial_baud,sizeof(serial_baud));
+        file.read((uint8_t*)&serial_bin,sizeof(serial_bin));
+        file.close();
+        Serial.println("Loaded settings");
+        
+    }
     lcd_buffer1 = (uint8_t*)malloc(lcd_buffer_size);
     if (lcd_buffer1 == nullptr) {
         Serial.println("Error: Out of memory allocating lcd_buffer1");
@@ -235,7 +246,18 @@ static void lcd_wake() {
         lcd_sleeping = false;
     }
 }
-
+static void save_settings() {
+    File file;
+    if(!SPIFFS.exists("/settings")) {
+        file = SPIFFS.open("/settings","wb",true);
+    } else {
+        file = SPIFFS.open("/settings","wb");
+        file.seek(0);
+    }
+    file.write((uint8_t*)&serial_baud,sizeof(serial_baud));
+    file.write((uint8_t*)&serial_bin,sizeof(serial_bin));
+    file.close();
+}
 static void button_a_on_click(int clicks, void* state) {
     if(lcd_dimmer.dimmed()) {
         lcd_wake();
@@ -249,6 +271,7 @@ static void button_a_on_click(int clicks, void* state) {
     probe_msg_label2.visible(true);
     serial_msg_ts = millis();
     main_screen.update();
+    save_settings();
     
 }
 static void button_a_on_long_click(void* state) {
@@ -271,6 +294,7 @@ static void button_a_on_long_click(void* state) {
     serial_msg_ts = millis();
     SER.updateBaudRate(baud);
     main_screen.update();
+    save_settings();
 
 }
 static void button_b_on_click(int clicks, void* state) {
@@ -324,8 +348,7 @@ static bool refresh_i2c() {
                 }
             }
             if (!count) {
-                strncpy(display_text, "<none>", sizeof(display_text));
-                display_text[6]='\0';
+                memcpy(display_text, "<none>\0", 7);
                 Serial.println("<none>");
             }
             Serial.println();
