@@ -100,7 +100,6 @@ static button_t button_b(button_b_raw); // left
 
 void setup() {
     MONITOR.begin(115200);
-    SER.begin(115200, SERIAL_8N1, SER_RX, -1);
     // load our previous settings
     SPIFFS.begin(true,"/spiffs",1);
     if(SPIFFS.exists("/settings")) {
@@ -108,9 +107,11 @@ void setup() {
         file.read((uint8_t*)&serial_baud,sizeof(serial_baud));
         file.read((uint8_t*)&serial_bin,sizeof(serial_bin));
         file.close();
-        MONITOR.println("Loaded settings");
-        
+        MONITOR.println("Loaded settings");    
     }
+    // begin serial
+    SER.begin(serial_bauds[serial_baud], SERIAL_8N1, SER_RX, -1);
+
     // allocate the primary display buffer
     lcd_buffer1 = (uint8_t*)malloc(lcd_buffer_size);
     if (lcd_buffer1 == nullptr) {
