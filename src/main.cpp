@@ -9,14 +9,16 @@
 #define SER Serial1
 #define SER_RX 17
 #include <Arduino.h>
-#include <Wire.h>
 #include <SPIFFS.h>
+#include <Wire.h>
+
 #include <atomic>
 #include <button.hpp>
 #include <htcw_data.hpp>
 #include <lcd_miser.hpp>
 #include <thread.hpp>
 #include <uix.hpp>
+
 #include "driver/i2c.h"
 #define LCD_IMPLEMENTATION
 #include "lcd_init.h"
@@ -55,6 +57,9 @@ static void button_b_on_click(int clicks, void* state);
 // thread routine that scans the bus and
 // updates the i2c address list
 static void i2c_update_task(void* state);
+// we have to handle our main logic on a separate thread outside
+// of loop() because arduino doesn't give loop() enough stack
+static void render_task(void* state);
 
 using dimmer_t = lcd_miser<4>;
 using color16_t = color<rgb_pixel<16>>;
@@ -78,10 +83,8 @@ static const int serial_bauds[] = {
     115200,
     19200,
     9600,
-    2400
-};
-static const size_t serial_bauds_size 
-    = sizeof(serial_bauds)/sizeof(int);
+    2400};
+static const size_t serial_bauds_size = sizeof(serial_bauds) / sizeof(int);
 static size_t serial_baud_index = 0;
 static bool serial_bin = false;
 static uint32_t serial_msg_ts = 0;
@@ -102,21 +105,21 @@ static bool lcd_sleeping = false;
 static dimmer_t lcd_dimmer;
 
 // button data
-static button_a_raw_t button_a_raw; // right
-static button_b_raw_t button_b_raw; // left
-static button_t button_a(button_a_raw); // right
-static button_t button_b(button_b_raw); // left
+static button_a_raw_t button_a_raw;      // right
+static button_b_raw_t button_b_raw;      // left
+static button_t button_a(button_a_raw);  // right
+static button_t button_b(button_b_raw);  // left
 
 void setup() {
     MONITOR.begin(115200);
     // load our previous settings
-    SPIFFS.begin(true,"/spiffs",1);
-    if(SPIFFS.exists("/settings")) {
+    SPIFFS.begin(true, "/spiffs", 1);
+    if (SPIFFS.exists("/settings")) {
         File file = SPIFFS.open("/settings");
-        file.read((uint8_t*)&serial_baud_index,sizeof(serial_baud_index));
-        file.read((uint8_t*)&serial_bin,sizeof(serial_bin));
+        file.read((uint8_t*)&serial_baud_index, sizeof(serial_baud_index));
+        file.read((uint8_t*)&serial_bin, sizeof(serial_bin));
         file.close();
-        MONITOR.println("Loaded settings");    
+        MONITOR.println("Loaded settings");
     }
     // begin serial probe
     SER.begin(serial_bauds[serial_baud_index], SERIAL_8N1, SER_RX, -1);
@@ -185,26 +188,27 @@ void setup() {
             ;
     }
     *display_text = '\0';
-    serial_data_capacity = probe_cols*probe_rows;
+    serial_data_capacity = probe_cols * probe_rows;
     serial_data = (uint8_t*)malloc(serial_data_capacity);
-    if(serial_data==nullptr) {
+    if (serial_data == nullptr) {
         MONITOR.println("Could not allocate serial data");
         while (1)
             ;
     }
-    
+
     // report the memory vitals
     MONITOR.printf("SRAM free: %0.1fKB\n",
-                  (float)ESP.getFreeHeap() / 1024.0);
+                   (float)ESP.getFreeHeap() / 1024.0);
     MONITOR.printf("SRAM largest free block: %0.1fKB\n",
-                  (float)ESP.getMaxAllocHeap() / 1024.0);
+                   (float)ESP.getMaxAllocHeap() / 1024.0);
     MONITOR.println();
+
 }
 
 void loop() {
     // timeout the serial settings display
     // if it's showing
-    if(serial_msg_ts && millis()>serial_msg_ts+1000) {
+    if (serial_msg_ts && millis() > serial_msg_ts + 1000) {
         probe_msg_label1.visible(false);
         probe_msg_label2.visible(false);
         serial_msg_ts = 0;
@@ -226,8 +230,8 @@ void loop() {
         probe_label.visible(true);
         lcd_wake();
         lcd_dimmer.wake();
-    // otherwise if the serial has changed,
-    // update the display
+        // otherwise if the serial has changed,
+        // update the display
     } else if (refresh_serial()) {
         is_serial = true;
         probe_label.text_color(color32_t::yellow);
@@ -237,9 +241,9 @@ void loop() {
         lcd_dimmer.wake();
     }
     // if we're dimmed all the way, just
-    // sleep, and stop updating the 
+    // sleep, and stop updating the
     // screen. Otherwise ensure
-    // the display controller 
+    // the display controller
     // is awake and update
     if (lcd_dimmer.faded()) {
         lcd_sleep();
@@ -297,31 +301,31 @@ static void lcd_wake() {
 // saves the current configuration to flash
 static void save_settings() {
     File file;
-    if(!SPIFFS.exists("/settings")) {
-        file = SPIFFS.open("/settings","wb",true);
+    if (!SPIFFS.exists("/settings")) {
+        file = SPIFFS.open("/settings", "wb", true);
     } else {
-        file = SPIFFS.open("/settings","wb");
+        file = SPIFFS.open("/settings", "wb");
         file.seek(0);
     }
-    file.write((uint8_t*)&serial_baud_index,sizeof(serial_baud_index));
-    file.write((uint8_t*)&serial_bin,sizeof(serial_bin));
+    file.write((uint8_t*)&serial_baud_index, sizeof(serial_baud_index));
+    file.write((uint8_t*)&serial_bin, sizeof(serial_bin));
     file.close();
 }
 // right button on click
 static void button_a_on_click(int clicks, void* state) {
     // if it's dimmed, wake it and eat one
     // click
-    if(lcd_dimmer.dimmed()) {
+    if (lcd_dimmer.dimmed()) {
         lcd_wake();
         lcd_dimmer.wake();
         --clicks;
     }
     // eat all the clicks, setting serial_bin
     // accordingly
-    serial_bin = (serial_bin+(clicks&1))&1;
+    serial_bin = (serial_bin + (clicks & 1)) & 1;
     // update the message controls
     probe_msg_label1.text("[ mode ]");
-    probe_msg_label2.text(serial_bin?"bin":"txt");
+    probe_msg_label2.text(serial_bin ? "bin" : "txt");
     probe_msg_label1.visible(true);
     probe_msg_label2.visible(true);
     // start the message timeout
@@ -335,20 +339,20 @@ static void button_a_on_click(int clicks, void* state) {
 static void button_a_on_long_click(void* state) {
     // wake if necessary, and return if
     // that's the case
-    if(lcd_dimmer.dimmed()) {
+    if (lcd_dimmer.dimmed()) {
         lcd_wake();
         lcd_dimmer.wake();
         return;
     }
     // otherwise, change baud rate
-    if(++serial_baud_index==serial_bauds_size) {
+    if (++serial_baud_index == serial_bauds_size) {
         serial_baud_index = 0;
     }
     // update the message controls
     probe_msg_label1.text("[ baud ]");
     char buf[16];
     int baud = (int)serial_bauds[serial_baud_index];
-    itoa((int)baud,buf,10);
+    itoa((int)baud, buf, 10);
     probe_msg_label2.text(buf);
     probe_msg_label1.visible(true);
     probe_msg_label2.visible(true);
@@ -371,6 +375,7 @@ static void button_b_on_click(int clicks, void* state) {
 // (runs on alternative core)
 void i2c_update_task(void* state) {
     while (true) {
+        vTaskDelay(1);
         I2C.begin(I2C_SDA, I2C_SCL);
         // ensure pullups
         i2c_set_pin(0, I2C_SDA, I2C_SCL, true, true, I2C_MODE_MASTER);
@@ -381,7 +386,7 @@ void i2c_update_task(void* state) {
         memset(banks, 0, sizeof(banks));
         // for every address
         for (byte i = 0; i < 127; i++) {
-            // start a transmission, and see 
+            // start a transmission, and see
             // if it's successful
             I2C.beginTransmission(i);
             if (I2C.endTransmission() == 0) {
@@ -422,7 +427,7 @@ static bool refresh_i2c() {
                 if (banks[bank] & mask) {
                     // if we still have room
                     if (count < probe_rows - 1) {
-                        // insert newlines at the end of the 
+                        // insert newlines at the end of the
                         // previous row, if there was one
                         if (count) {
                             strcat(display_text, "\n");
@@ -453,30 +458,31 @@ static bool refresh_i2c() {
 // refresh the serial display if it has changed
 // reporting true if so
 static bool refresh_serial() {
-        
     // get the available data count
     size_t available = (size_t)SER.available();
     size_t advanced = 0;
     // if we have incoming data
     if (available > 0) {
+        if (available > serial_data_capacity) {
+            available = serial_data_capacity;
+        }
         // start over if we're just switching to serial
-        if(!is_serial) {
+        if (!is_serial) {
             serial_data_size = 0;
         }
         size_t serial_remaining = serial_data_capacity - serial_data_size;
         uint8_t* p;
-        if(serial_remaining<available) {
+        if (serial_remaining < available) {
             size_t to_scroll = available - serial_remaining;
             // scroll the serial buffer
-            memmove(serial_data,serial_data+to_scroll,serial_data_size-to_scroll);
-            Serial.println("Got here2");
-    
-            serial_data_size-=to_scroll;
+            if (to_scroll < serial_data_size) {
+                memmove(serial_data, serial_data + to_scroll, serial_data_size - to_scroll);
+            }
+            serial_data_size -= to_scroll;
         }
-        p = serial_data+serial_data_size;
-        Serial.println("Got here3");
-    
-        serial_data_size+=SER.read(p,available);
+        p = serial_data + serial_data_size;
+
+        serial_data_size += SER.read(p, available);
         if (!serial_bin) {  // text
             // pointer to our display text
             char* sz = display_text;
@@ -484,10 +490,10 @@ static bool refresh_serial() {
             size_t pbc = serial_data_size;
             // null terminate it
             *sz = '\0';
-            int cols = 0, rows=0;
+            int cols = 0, rows = 0;
             do {
                 // get the next serial
-                if(pbc==0) {
+                if (pbc == 0) {
                     break;
                 }
                 uint8_t b = *pb++;
@@ -507,7 +513,7 @@ static bool refresh_serial() {
                     }
                 }
                 // insert newlines as necessary
-                if(rows<probe_rows-1 && ++cols == probe_cols) {
+                if (rows < probe_rows - 1 && ++cols == probe_cols) {
                     cols = 0;
                     *sz++ = '\n';
                     ++rows;
@@ -515,9 +521,9 @@ static bool refresh_serial() {
                 ++advanced;
             } while (pbc);
             *sz = '\0';
-        } else { // binary
-            int bin_cols = probe_cols/3, rows = 0;
-            int count_bin = (bin_cols) * probe_rows;
+        } else {  // binary
+            int bin_cols = probe_cols / 3, rows = 0;
+            int count_bin = (bin_cols)*probe_rows;
             int mon_cols = 0;
             uint8_t* pb = serial_data;
             size_t pbc = serial_data_size;
@@ -527,7 +533,7 @@ static bool refresh_serial() {
             *sz = '\0';
             int cols = 0;
             do {
-                if(pbc==0) {
+                if (pbc == 0) {
                     break;
                 }
                 uint8_t b = *pb++;
@@ -535,26 +541,26 @@ static bool refresh_serial() {
                 char buf[4];
                 // format the binary column
                 // inserting spaces as necessary
-                if(bin_cols-1==cols) {
-                    snprintf(buf,sizeof(buf),"%02X",b);
-                    strcpy(sz,buf);
-                    sz+=2;
+                if (bin_cols - 1 == cols) {
+                    snprintf(buf, sizeof(buf), "%02X", b);
+                    strcpy(sz, buf);
+                    sz += 2;
                 } else {
-                    snprintf(buf,sizeof(buf),"%02X ",b);
-                    strcpy(sz,buf);
-                    sz+=3;
+                    snprintf(buf, sizeof(buf), "%02X ", b);
+                    strcpy(sz, buf);
+                    sz += 3;
                 }
                 // insert newlines as necessary
-                if(rows<probe_rows-1 && ++cols == bin_cols) {
+                if (rows < probe_rows - 1 && ++cols == bin_cols) {
                     cols = 0;
                     *sz++ = '\n';
                     ++rows;
                 }
                 // dump to the monitor
-                MONITOR.printf("%02X ",b);
-                if(++mon_cols == 10) {
+                MONITOR.printf("%02X ", b);
+                if (++mon_cols == 10) {
                     MONITOR.println();
-                    mon_cols =0;
+                    mon_cols = 0;
                 }
                 ++advanced;
             } while (--count_bin);
