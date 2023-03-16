@@ -1,6 +1,7 @@
 // Generic ESP LCD Panel API initialization code
 #ifndef LCD_INIT_H
 #define LCD_INIT_H
+// define LCD_IMPLEMENTATION in exactly one source file
 #ifdef LCD_IMPLEMENTATION
 #include "lcd_config.h"
 #include <string.h>

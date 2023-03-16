@@ -1,7 +1,11 @@
+// where the serial monitor output
+// goes
 #define MONITOR Serial
+// the I2C probe connections
 #define I2C Wire
 #define I2C_SDA 21
 #define I2C_SCL 22
+// the serial probe connections
 #define SER Serial1
 #define SER_RX 17
 #include <Arduino.h>
@@ -13,15 +17,15 @@
 #include <lcd_miser.hpp>
 #include <thread.hpp>
 #include <uix.hpp>
-#define LCD_IMPLEMENTATION
 #include "driver/i2c.h"
+#define LCD_IMPLEMENTATION
 #include "lcd_init.h"
 #include "ui.hpp"
 using namespace arduino;
 using namespace gfx;
 using namespace uix;
 using namespace freertos;
-using namespace data;
+
 // htcw_uix calls this to send a bitmap to the LCD Panel API
 static void uix_on_flush(point16 location,
                          bitmap<rgb_pixel<16>>& bmp,
@@ -53,6 +57,7 @@ static void button_b_on_click(int clicks, void* state);
 // thread routine that scans the bus and
 // updates the i2c address list
 static void i2c_update_task(void* state);
+
 using dimmer_t = lcd_miser<4>;
 using color16_t = color<rgb_pixel<16>>;
 using color32_t = color<rgba_pixel<32>>;
@@ -65,12 +70,8 @@ static thread i2c_updater;
 static SemaphoreHandle_t i2c_update_sync;
 static volatile std::atomic_bool i2c_updater_ran;
 
-struct i2c_data {
-    uint32_t banks[4];
-};
-
-static i2c_data i2c_addresses;
-static i2c_data i2c_addresses_old;
+static uint32_t i2c_addresses[4];
+static uint32_t i2c_addresses_old[4];
 
 static const int serial_bauds[] = {
     115200,
@@ -372,7 +373,7 @@ void i2c_update_task(void* state) {
         I2C.end();
         // safely update the main address list
         xSemaphoreTake(i2c_update_sync, portMAX_DELAY);
-        memcpy(i2c_addresses.banks, banks, sizeof(banks));
+        memcpy(i2c_addresses, banks, sizeof(banks));
         xSemaphoreGive(i2c_update_sync);
         // say we ran
         i2c_updater_ran = true;
@@ -387,10 +388,10 @@ static bool refresh_i2c() {
     if (i2c_updater_ran) {
         // safely copy out the share address list
         xSemaphoreTake(i2c_update_sync, portMAX_DELAY);
-        memcpy(banks, i2c_addresses.banks, sizeof(banks));
+        memcpy(banks, i2c_addresses, sizeof(banks));
         xSemaphoreGive(i2c_update_sync);
         // if our addresses have changed
-        if (memcmp(banks, i2c_addresses_old.banks, sizeof(banks))) {
+        if (memcmp(banks, i2c_addresses_old, sizeof(banks))) {
             char buf[32];
             *display_text = '\0';
             int count = 0;
@@ -422,7 +423,7 @@ static bool refresh_i2c() {
             }
             MONITOR.println();
             // set the old addresses to the latest
-            memcpy(i2c_addresses_old.banks, banks, sizeof(banks));
+            memcpy(i2c_addresses_old, banks, sizeof(banks));
             // return true, indicating a change
             return true;
         }
