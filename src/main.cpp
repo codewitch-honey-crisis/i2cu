@@ -92,7 +92,7 @@ static size_t serial_data_size = 0;
 
 // probe display data
 static char* display_text = nullptr;
-static size_t display_text_size = 0;
+static size_t display_text_capacity = 0;
 
 // lcd panel ops and dimmer data
 static constexpr const size_t lcd_buffer_size = 64 * 1024;
@@ -176,9 +176,9 @@ void setup() {
     // initialize the UI components
     ui_init();
     // compute the amount of string we need to fill the display
-    display_text_size = probe_cols * (probe_rows + 1) + 1;
+    display_text_capacity = probe_cols * (probe_rows + 1) + 1;
     // and allocate it (shouldn't be much)
-    display_text = (char*)malloc(display_text_size);
+    display_text = (char*)malloc(display_text_capacity);
     if (display_text == nullptr) {
         MONITOR.println("Could not allocate display text");
         while (1)
@@ -453,6 +453,7 @@ static bool refresh_i2c() {
 // refresh the serial display if it has changed
 // reporting true if so
 static bool refresh_serial() {
+        
     // get the available data count
     size_t available = (size_t)SER.available();
     size_t advanced = 0;
@@ -468,9 +469,13 @@ static bool refresh_serial() {
             size_t to_scroll = available - serial_remaining;
             // scroll the serial buffer
             memmove(serial_data,serial_data+to_scroll,serial_data_size-to_scroll);
+            Serial.println("Got here2");
+    
             serial_data_size-=to_scroll;
         }
         p = serial_data+serial_data_size;
+        Serial.println("Got here3");
+    
         serial_data_size+=SER.read(p,available);
         if (!serial_bin) {  // text
             // pointer to our display text
