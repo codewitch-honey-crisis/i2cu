@@ -80,10 +80,15 @@ static const int serial_bauds[] = {
     9600,
     2400
 };
-static const size_t serial_bauds_size = sizeof(serial_bauds)/sizeof(int);
-static size_t serial_baud = 0;
+static const size_t serial_bauds_size 
+    = sizeof(serial_bauds)/sizeof(int);
+static size_t serial_baud_index = 0;
 static bool serial_bin = false;
 static uint32_t serial_msg_ts = 0;
+static bool is_serial = false;
+static uint8_t* serial_data = nullptr;
+static size_t serial_data_capacity = 0;
+static size_t serial_data_size = 0;
 
 // probe display data
 static char* display_text = nullptr;
@@ -108,13 +113,13 @@ void setup() {
     SPIFFS.begin(true,"/spiffs",1);
     if(SPIFFS.exists("/settings")) {
         File file = SPIFFS.open("/settings");
-        file.read((uint8_t*)&serial_baud,sizeof(serial_baud));
+        file.read((uint8_t*)&serial_baud_index,sizeof(serial_baud_index));
         file.read((uint8_t*)&serial_bin,sizeof(serial_bin));
         file.close();
         MONITOR.println("Loaded settings");    
     }
     // begin serial probe
-    SER.begin(serial_bauds[serial_baud], SERIAL_8N1, SER_RX, -1);
+    SER.begin(serial_bauds[serial_baud_index], SERIAL_8N1, SER_RX, -1);
 
     // allocate the primary display buffer
     lcd_buffer1 = (uint8_t*)malloc(lcd_buffer_size);
@@ -180,7 +185,14 @@ void setup() {
             ;
     }
     *display_text = '\0';
-
+    serial_data_capacity = probe_cols*probe_rows;
+    serial_data = (uint8_t*)malloc(serial_data_capacity);
+    if(serial_data==nullptr) {
+        MONITOR.println("Could not allocate serial data");
+        while (1)
+            ;
+    }
+    
     // report the memory vitals
     MONITOR.printf("SRAM free: %0.1fKB\n",
                   (float)ESP.getFreeHeap() / 1024.0);
@@ -208,6 +220,7 @@ void loop() {
     button_b.update();
     // if the i2c has changed, update the display
     if (refresh_i2c()) {
+        is_serial = false;
         probe_label.text_color(color32_t::green);
         probe_label.text(display_text);
         probe_label.visible(true);
@@ -216,6 +229,7 @@ void loop() {
     // otherwise if the serial has changed,
     // update the display
     } else if (refresh_serial()) {
+        is_serial = true;
         probe_label.text_color(color32_t::yellow);
         probe_label.text(display_text);
         probe_label.visible(true);
@@ -289,7 +303,7 @@ static void save_settings() {
         file = SPIFFS.open("/settings","wb");
         file.seek(0);
     }
-    file.write((uint8_t*)&serial_baud,sizeof(serial_baud));
+    file.write((uint8_t*)&serial_baud_index,sizeof(serial_baud_index));
     file.write((uint8_t*)&serial_bin,sizeof(serial_bin));
     file.close();
 }
@@ -327,13 +341,13 @@ static void button_a_on_long_click(void* state) {
         return;
     }
     // otherwise, change baud rate
-    if(++serial_baud==serial_bauds_size) {
-        serial_baud = 0;
+    if(++serial_baud_index==serial_bauds_size) {
+        serial_baud_index = 0;
     }
     // update the message controls
     probe_msg_label1.text("[ baud ]");
     char buf[16];
-    int baud = (int)serial_bauds[serial_baud];
+    int baud = (int)serial_bauds[serial_baud_index];
     itoa((int)baud,buf,10);
     probe_msg_label2.text(buf);
     probe_msg_label1.visible(true);
@@ -444,38 +458,35 @@ static bool refresh_serial() {
     size_t advanced = 0;
     // if we have incoming data
     if (available > 0) {
+        // start over if we're just switching to serial
+        if(!is_serial) {
+            serial_data_size = 0;
+        }
+        size_t serial_remaining = serial_data_capacity - serial_data_size;
+        uint8_t* p;
+        if(serial_remaining<available) {
+            size_t to_scroll = available - serial_remaining;
+            // scroll the serial buffer
+            memmove(serial_data,serial_data+to_scroll,serial_data_size-to_scroll);
+            serial_data_size-=to_scroll;
+        }
+        p = serial_data+serial_data_size;
+        serial_data_size+=SER.read(p,available);
         if (!serial_bin) {  // text
-            // while we have too much 
-            // data for the screen
-            // eat the beginning
-            while (available > 
-                (display_text_size -
-                    probe_rows - 1)) {
-                int i = SER.read();
-                if (i != -1) {
-                    // except when we monitor.
-                    // we display everything
-                    uint8_t b = (uint8_t)i;
-                    if (b == '\r' || b == '\n' || b == '\t' || b == ' ' || isprint(b)) {
-                        MONITOR.print((char)b);
-                    } else {
-                        MONITOR.print('.');
-                    }
-                }
-                --available;
-            }
             // pointer to our display text
             char* sz = display_text;
+            uint8_t* pb = serial_data;
+            size_t pbc = serial_data_size;
             // null terminate it
             *sz = '\0';
             int cols = 0, rows=0;
             do {
                 // get the next serial
-                int i = SER.read();
-                if (i == -1) {
+                if(pbc==0) {
                     break;
                 }
-                uint8_t b = (uint8_t)i;
+                uint8_t b = *pb++;
+                --pbc;
                 // if it's printable, print it
                 // otherwise, print '.'
                 if (b == ' ' || isprint(b)) {
@@ -497,48 +508,34 @@ static bool refresh_serial() {
                     ++rows;
                 }
                 ++advanced;
-            } while (--available);
+            } while (pbc);
             *sz = '\0';
         } else { // binary
             int bin_cols = probe_cols/3, rows = 0;
             int count_bin = (bin_cols) * probe_rows;
             int mon_cols = 0;
-            while (available > count_bin) {
-                // remove leading data that won't fit
-                // on the screen
-                int i = SER.read();
-                if (i != -1) {
-                    // make sure we dump to the monitor though
-                    uint8_t b = (uint8_t)i;
-                    MONITOR.printf("%02X ",i);
-                    if(++mon_cols==10) {
-                        MONITOR.println();
-                        mon_cols = 0;
-                    }
-                }
-                --available;
-            }
+            uint8_t* pb = serial_data;
+            size_t pbc = serial_data_size;
             // our display pointer
             char* sz = display_text;
             // null terminate it
             *sz = '\0';
             int cols = 0;
             do {
-                // get the next serial
-                int i = SER.read();
-                if (i == -1) {
+                if(pbc==0) {
                     break;
                 }
-                uint8_t b = (uint8_t)i;
+                uint8_t b = *pb++;
+                --pbc;
                 char buf[4];
                 // format the binary column
                 // inserting spaces as necessary
                 if(bin_cols-1==cols) {
-                    snprintf(buf,sizeof(buf),"%02X",i);
+                    snprintf(buf,sizeof(buf),"%02X",b);
                     strcpy(sz,buf);
                     sz+=2;
                 } else {
-                    snprintf(buf,sizeof(buf),"%02X ",i);
+                    snprintf(buf,sizeof(buf),"%02X ",b);
                     strcpy(sz,buf);
                     sz+=3;
                 }
@@ -549,13 +546,13 @@ static bool refresh_serial() {
                     ++rows;
                 }
                 // dump to the monitor
-                MONITOR.printf("%02X ");
+                MONITOR.printf("%02X ",b);
                 if(++mon_cols == 10) {
                     MONITOR.println();
                     mon_cols =0;
                 }
                 ++advanced;
-            } while (--available);
+            } while (--count_bin);
             *sz = '\0';
             MONITOR.println();
         }
