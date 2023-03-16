@@ -50,9 +50,7 @@ static void save_settings();
 static void button_a_on_click(int clicks, void* state);
 // long click handler for button a
 static void button_a_on_long_click(void* state);
-// click handler for button b (not necessary, but
-// for future proofing in case the buttons get used
-// later)
+// click handler for button b
 static void button_b_on_click(int clicks, void* state);
 // thread routine that scans the bus and
 // updates the i2c address list
