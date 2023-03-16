@@ -66,13 +66,16 @@ using button_b_raw_t = int_button<0, 10, true>;
 using button_t = multi_button;
 using screen_t = screen<LCD_HRES, LCD_VRES, rgb_pixel<16>>;
 
+// i2c update thread data
 static thread i2c_updater;
 static SemaphoreHandle_t i2c_update_sync;
 static volatile std::atomic_bool i2c_updater_ran;
 
+// i2c address data
 static uint32_t i2c_addresses[4];
 static uint32_t i2c_addresses_old[4];
 
+// serial data
 static const int serial_bauds[] = {
     115200,
     19200,
@@ -84,15 +87,18 @@ static size_t serial_baud = 0;
 static bool serial_bin = false;
 static uint32_t serial_msg_ts = 0;
 
+// probe display data
 static char* display_text = nullptr;
 static size_t display_text_size = 0;
 
+// lcd panel ops and dimmer data
 static constexpr const size_t lcd_buffer_size = 64 * 1024;
 static uint8_t* lcd_buffer1 = nullptr;
 static uint8_t* lcd_buffer2 = nullptr;
 static bool lcd_sleeping = false;
 static dimmer_t lcd_dimmer;
 
+// button data
 static button_a_raw_t button_a_raw; // right
 static button_b_raw_t button_b_raw; // left
 static button_t button_a(button_a_raw); // right
@@ -109,7 +115,7 @@ void setup() {
         file.close();
         MONITOR.println("Loaded settings");    
     }
-    // begin serial
+    // begin serial probe
     SER.begin(serial_bauds[serial_baud], SERIAL_8N1, SER_RX, -1);
 
     // allocate the primary display buffer
