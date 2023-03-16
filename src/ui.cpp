@@ -36,9 +36,9 @@ uint16_t probe_rows = 0;
 // set up all the main screen
 // controls
 static void ui_init_main_screen() {
+    // create a transparent color
     rgba_pixel<32> trans;
     trans.channel<channel_name::A>(0);
-    
     title_label.background_color(trans);
     title_label.border_color(trans);
     title_label.text_color(ctl_color_t::black);
@@ -47,7 +47,10 @@ static void ui_init_main_screen() {
     title_label.text_line_height(40);
     title_label.text_justify(uix_justify::bottom_middle);
     title_label.bounds(main_screen.bounds());
+    
     main_screen.register_control(title_label);
+    
+    // load the SVG
     gfx_result res = svg_doc::read(&probe,&title_doc);
     if(res!=gfx_result::success) {
         Serial.println("Could not load title svg");
@@ -58,6 +61,7 @@ static void ui_init_main_screen() {
                                     main_screen.dimensions().height/4));
         main_screen.register_control(title_svg);
     }
+    // create the probe text label
     rgba_pixel<32> bg = ctl_color_t::black;
     bg.channelr<channel_name::A>(.85);
     probe_label.background_color(bg);
@@ -68,12 +72,17 @@ static void ui_init_main_screen() {
     probe_label.text_justify(uix_justify::center_left);
     probe_label.bounds(main_screen.bounds());
     probe_label.visible(false);
+
     main_screen.register_control(probe_label);
 
+    // compute the probe columns and rows
     probe_rows = (main_screen.dimensions().height-
         probe_label.padding().height*2)/
         probe_label.text_line_height();
     int probe_m;
+    // we use the standard method of measuring M
+    // to determine the font width. This really
+    // should be used with monospace fonts though
     ssize16 tsz = probe_font.measure_text(ssize16::max(),
                             spoint16::zero(),
                             "M",
@@ -82,9 +91,9 @@ static void ui_init_main_screen() {
     probe_cols = (main_screen.dimensions().width-
         probe_label.padding().width*2)/
         tsz.width;
-    probe_rows = (main_screen.dimensions().height-
-        probe_label.padding().height*2)/
-        tsz.height;
+    // now compute where our probe
+    // configuration message labels
+    // go
     srect16 b = main_screen.bounds();
     b=srect16(b.x1,
             b.y1,
@@ -101,9 +110,9 @@ static void ui_init_main_screen() {
     probe_msg_label1.text_open_font(&title_font);
     probe_msg_label1.text_line_height(25);
     probe_msg_label1.text_justify(uix_justify::center);
-    
     probe_msg_label1.bounds(b);
     probe_msg_label1.visible(false);
+
     main_screen.register_control(probe_msg_label1);
 
     probe_msg_label2.background_color(mbg);
@@ -115,6 +124,7 @@ static void ui_init_main_screen() {
     b.offset_inplace(0,probe_msg_label1.bounds().height());
     probe_msg_label2.bounds(b);
     probe_msg_label2.visible(false);
+    
     main_screen.register_control(probe_msg_label2);
 
     main_screen.background_color(scr_color_t::white);

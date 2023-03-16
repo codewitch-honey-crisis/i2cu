@@ -1,3 +1,4 @@
+// Generic ESP LCD Panel API initialization code
 #ifndef LCD_INIT_H
 #define LCD_INIT_H
 #ifdef LCD_IMPLEMENTATION
