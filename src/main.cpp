@@ -161,6 +161,7 @@ void setup() {
     button_a.on_click(button_a_on_click);
     button_a.on_long_click(button_a_on_long_click);
     button_b.on_click(button_b_on_click);
+    // init the lcd
     lcd_panel_init(lcd_buffer_size, lcd_flush_ready);
     if (lcd_handle == nullptr) {
         MONITOR.println("Could not initialize the display");
@@ -188,6 +189,8 @@ void setup() {
             ;
     }
     *display_text = '\0';
+    // compute and allocate our serial buffer
+    // similar to above
     serial_data_capacity = probe_cols * probe_rows;
     serial_data = (uint8_t*)malloc(serial_data_capacity);
     if (serial_data == nullptr) {
@@ -195,14 +198,12 @@ void setup() {
         while (1)
             ;
     }
-
     // report the memory vitals
     MONITOR.printf("SRAM free: %0.1fKB\n",
                    (float)ESP.getFreeHeap() / 1024.0);
     MONITOR.printf("SRAM largest free block: %0.1fKB\n",
                    (float)ESP.getMaxAllocHeap() / 1024.0);
     MONITOR.println();
-
 }
 
 void loop() {
@@ -481,7 +482,6 @@ static bool refresh_serial() {
             serial_data_size -= to_scroll;
         }
         p = serial_data + serial_data_size;
-
         serial_data_size += SER.read(p, available);
         if (!serial_bin) {  // text
             // pointer to our display text

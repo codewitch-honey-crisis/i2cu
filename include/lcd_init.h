@@ -13,7 +13,8 @@
 #include "esp_lcd_panel_io.h"
 
 // global so it can be used after init
-void lcd_panel_init(size_t max_transfer_size,esp_lcd_panel_io_color_trans_done_cb_t done_callback);
+void lcd_panel_init(size_t max_transfer_size,
+        esp_lcd_panel_io_color_trans_done_cb_t done_callback);
 #if !defined(LCD_IMPLEMENTATION)
 extern esp_lcd_panel_handle_t lcd_handle;
 extern esp_lcd_panel_io_handle_t lcd_io_handle;
@@ -31,7 +32,8 @@ int lcd_height = LCD_VRES;
 #endif // LCD_SWAP_XY
 
 // initialize the screen using the esp lcd panel API
-void lcd_panel_init(size_t max_transfer_size,esp_lcd_panel_io_color_trans_done_cb_t done_callback) {
+void lcd_panel_init(size_t max_transfer_size,
+        esp_lcd_panel_io_color_trans_done_cb_t done_callback) {
 #ifdef PIN_NUM_BCKL
     gpio_set_direction((gpio_num_t)PIN_NUM_BCKL,GPIO_MODE_OUTPUT);
 #endif // PIN_NUM_BCKL

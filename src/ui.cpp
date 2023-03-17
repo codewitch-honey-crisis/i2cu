@@ -1,7 +1,7 @@
-#include "lcd_config.h"
+#include <lcd_config.h>
 #include <ui.hpp>
 #include <uix.hpp>
-#include "probe.hpp"
+#include <probe.hpp>
 #include <fonts/OpenSans_Regular.hpp>
 #include <fonts/Telegrama.hpp>
 const gfx::open_font& title_font = OpenSans_Regular;
@@ -124,7 +124,7 @@ static void ui_init_main_screen() {
     b.offset_inplace(0,probe_msg_label1.bounds().height());
     probe_msg_label2.bounds(b);
     probe_msg_label2.visible(false);
-    
+
     main_screen.register_control(probe_msg_label2);
 
     main_screen.background_color(scr_color_t::white);
