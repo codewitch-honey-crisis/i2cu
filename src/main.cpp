@@ -17,9 +17,11 @@
 #include <htcw_data.hpp>
 #include <lcd_miser.hpp>
 #include <thread.hpp>
+#include <gfx.hpp>
 #include <uix.hpp>
 
 #include "driver/i2c.h"
+#include "lcd_config.h"
 #define LCD_IMPLEMENTATION
 #include "lcd_init.h"
 #include "ui.hpp"
@@ -29,8 +31,8 @@ using namespace uix;
 using namespace freertos;
 
 // htcw_uix calls this to send a bitmap to the LCD Panel API
-static void uix_on_flush(point16 location,
-                         bitmap<rgb_pixel<16>>& bmp,
+static void uix_on_flush(const rect16& bounds,
+                         const void* bmp,
                          void* state);
 // the ESP Panel API calls this when the bitmap has been sent
 static bool lcd_flush_ready(esp_lcd_panel_io_handle_t panel_io,
@@ -67,7 +69,7 @@ using color32_t = color<rgba_pixel<32>>;
 using button_a_raw_t = int_button<35, 10, true>;
 using button_b_raw_t = int_button<0, 10, true>;
 using button_t = multi_button;
-using screen_t = screen<LCD_HRES, LCD_VRES, rgb_pixel<16>>;
+using screen_t = screen<rgb_pixel<LCD_BIT_DEPTH>>;
 
 // i2c update thread data
 static thread i2c_updater;
@@ -98,7 +100,7 @@ static char* display_text = nullptr;
 static size_t display_text_capacity = 0;
 
 // lcd panel ops and dimmer data
-static constexpr const size_t lcd_buffer_size = 64 * 1024;
+static constexpr const size_t lcd_buffer_size = gfx::bitmap<rgb_pixel<LCD_BIT_DEPTH>>::sizeof_buffer(LCD_WIDTH,LCD_HEIGHT/5);
 static uint8_t* lcd_buffer1 = nullptr;
 static uint8_t* lcd_buffer2 = nullptr;
 static bool lcd_sleeping = false;
@@ -119,7 +121,7 @@ void setup() {
         file.read((uint8_t*)&serial_baud_index, sizeof(serial_baud_index));
         file.read((uint8_t*)&serial_bin, sizeof(serial_bin));
         file.close();
-        MONITOR.println("Loaded settings");
+        puts("Loaded settings");
     }
     // begin serial probe
     SER.begin(serial_bauds[serial_baud_index], SERIAL_8N1, SER_RX, -1);
@@ -127,10 +129,11 @@ void setup() {
     // allocate the primary display buffer
     lcd_buffer1 = (uint8_t*)malloc(lcd_buffer_size);
     if (lcd_buffer1 == nullptr) {
-        MONITOR.println("Error: Out of memory allocating lcd_buffer1");
+        puts("Error: Out of memory allocating lcd_buffer1");
         while (1)
             ;
     }
+    lcd_panel_init(lcd_buffer_size,lcd_flush_ready);
     lcd_dimmer.initialize();
     // clear the i2c data
     memset(&i2c_addresses_old, 0, sizeof(i2c_addresses_old));
@@ -139,7 +142,7 @@ void setup() {
     i2c_updater_ran = false;
     i2c_update_sync = xSemaphoreCreateMutex();
     if (i2c_update_sync == nullptr) {
-        MONITOR.println("Could not allocate I2C updater semaphore");
+        puts("Could not allocate I2C updater semaphore");
         while (1)
             ;
     }
@@ -150,7 +153,7 @@ void setup() {
                                           10,
                                           2000);
     if (i2c_updater.handle() == nullptr) {
-        MONITOR.println("Could not allocate I2C updater thread");
+        puts("Could not allocate I2C updater thread");
         while (1)
             ;
     }
@@ -161,21 +164,22 @@ void setup() {
     button_a.on_click(button_a_on_click);
     button_a.on_long_click(button_a_on_long_click);
     button_b.on_click(button_b_on_click);
-    // init the lcd
-    lcd_panel_init(lcd_buffer_size, lcd_flush_ready);
+
     if (lcd_handle == nullptr) {
-        MONITOR.println("Could not initialize the display");
+        puts("Could not initialize the display");
         while (1)
             ;
     }
     // allocate the second display buffer (optional)
     lcd_buffer2 = (uint8_t*)malloc(lcd_buffer_size);
     if (lcd_buffer2 == nullptr) {
-        MONITOR.println("Warning: Out of memory allocating lcd_buffer2.");
-        MONITOR.println("Performance may be degraded. Try a smaller lcd_buffer_size");
+        puts("Warning: Out of memory allocating lcd_buffer2.");
+        puts("Performance may be degraded. Try a smaller lcd_buffer_size");
     }
-    // reinitialize the screen with valid pointers
-    main_screen = screen_t(lcd_buffer_size, lcd_buffer1, lcd_buffer2);
+    main_screen.dimensions({LCD_WIDTH,LCD_HEIGHT});
+    main_screen.buffer_size(lcd_buffer_size);
+    main_screen.buffer1(lcd_buffer1);
+    main_screen.buffer2(lcd_buffer2);
     main_screen.on_flush_callback(uix_on_flush);
     // initialize the UI components
     ui_init();
@@ -184,7 +188,7 @@ void setup() {
     // and allocate it (shouldn't be much)
     display_text = (char*)malloc(display_text_capacity);
     if (display_text == nullptr) {
-        MONITOR.println("Could not allocate display text");
+        puts("Could not allocate display text");
         while (1)
             ;
     }
@@ -194,22 +198,23 @@ void setup() {
     serial_data_capacity = probe_cols * probe_rows;
     serial_data = (uint8_t*)malloc(serial_data_capacity);
     if (serial_data == nullptr) {
-        MONITOR.println("Could not allocate serial data");
+        puts("Could not allocate serial data");
         while (1)
             ;
     }
     // report the memory vitals
-    MONITOR.printf("SRAM free: %0.1fKB\n",
+    printf("SRAM free: %0.1fKB\n",
                    (float)ESP.getFreeHeap() / 1024.0);
-    MONITOR.printf("SRAM largest free block: %0.1fKB\n",
+    printf("SRAM largest free block: %0.1fKB\n",
                    (float)ESP.getMaxAllocHeap() / 1024.0);
-    MONITOR.println();
+    puts("");
 }
 
 void loop() {
     // timeout the serial settings display
     // if it's showing
     if (serial_msg_ts && millis() > serial_msg_ts + 1000) {
+        msg_painter.visible(false);
         probe_msg_label1.visible(false);
         probe_msg_label2.visible(false);
         serial_msg_ts = 0;
@@ -226,7 +231,8 @@ void loop() {
     // if the i2c has changed, update the display
     if (refresh_i2c()) {
         is_serial = false;
-        probe_label.text_color(color32_t::green);
+        probe_painter.visible(true);
+        probe_label.color(color32_t::green);
         probe_label.text(display_text);
         probe_label.visible(true);
         lcd_wake();
@@ -235,7 +241,8 @@ void loop() {
         // update the display
     } else if (refresh_serial()) {
         is_serial = true;
-        probe_label.text_color(color32_t::yellow);
+        probe_painter.visible(true);
+        probe_label.color(color32_t::yellow);
         probe_label.text(display_text);
         probe_label.visible(true);
         lcd_wake();
@@ -254,25 +261,20 @@ void loop() {
     }
 }
 // writes bitmap data to the lcd panel api
-static void uix_on_flush(point16 location,
-                         bitmap<rgb_pixel<16>>& bmp,
+static void uix_on_flush(const rect16& bounds,
+                         const void* bmp,
                          void* state) {
-    int x1 = location.x;
-    int y1 = location.y;
-    int x2 = x1 + bmp.dimensions().width;
-    int y2 = y1 + bmp.dimensions().height;
-    esp_lcd_panel_draw_bitmap(lcd_handle,
-                              x1,
-                              y1,
-                              x2,
-                              y2,
-                              bmp.begin());
+    lcd_panel_draw_bitmap(  bounds.x1,
+                              bounds.y1,
+                              bounds.x2,
+                              bounds.y2,
+                              (void*)bmp);
 }
 // informs UIX that a previous flush was complete
 static bool lcd_flush_ready(esp_lcd_panel_io_handle_t panel_io,
                             esp_lcd_panel_io_event_data_t* edata,
                             void* user_ctx) {
-    main_screen.set_flush_complete();
+    main_screen.flush_complete();
     return true;
 }
 // puts the ST7789 to sleep
@@ -325,6 +327,7 @@ static void button_a_on_click(int clicks, void* state) {
     // accordingly
     serial_bin = (serial_bin + (clicks & 1)) & 1;
     // update the message controls
+    msg_painter.visible(true);
     probe_msg_label1.text("[ mode ]");
     probe_msg_label2.text(serial_bin ? "bin" : "txt");
     probe_msg_label1.visible(true);
@@ -354,6 +357,7 @@ static void button_a_on_long_click(void* state) {
     char buf[16];
     int baud = (int)serial_bauds[serial_baud_index];
     itoa((int)baud, buf, 10);
+    msg_painter.visible(true);
     probe_msg_label2.text(buf);
     probe_msg_label1.visible(true);
     probe_msg_label2.visible(true);
@@ -438,15 +442,15 @@ static bool refresh_i2c() {
                         snprintf(buf, sizeof(buf), "0x%02X:%d", i, i);
                         strncat(display_text, buf, sizeof(buf));
                     }
-                    MONITOR.printf("0x%02X:%d\n", i, i);
+                    printf("0x%02X:%d\n", i, i);
                 }
             }
             if (!count) {
                 // display none if there weren't any
                 memcpy(display_text, "<none>\0", 7);
-                MONITOR.println("<none>");
+                puts("<none>");
             }
-            MONITOR.println();
+            puts("");
             // set the old addresses to the latest
             memcpy(i2c_addresses_old, banks, sizeof(banks));
             // return true, indicating a change
@@ -502,14 +506,14 @@ static bool refresh_serial() {
                 // otherwise, print '.'
                 if (b == ' ' || isprint(b)) {
                     *sz++ = (char)b;
-                    MONITOR.print((char)b);
+                    putchar((char)b);
                 } else {
                     // monitor follows slightly different rules
                     *sz = '.';
                     if (b == '\n' || b == '\r' || b == '\t') {
-                        MONITOR.print((char)b);
+                        putchar((char)b);
                     } else {
-                        MONITOR.print('.');
+                        putchar('.');
                     }
                 }
                 // insert newlines as necessary
@@ -557,15 +561,15 @@ static bool refresh_serial() {
                     ++rows;
                 }
                 // dump to the monitor
-                MONITOR.printf("%02X ", b);
+                printf("%02X ", b);
                 if (++mon_cols == 10) {
-                    MONITOR.println();
+                    puts();
                     mon_cols = 0;
                 }
                 ++advanced;
             } while (--count_bin);
             *sz = '\0';
-            MONITOR.println();
+            puts("");
         }
         // report a change
         return true;
